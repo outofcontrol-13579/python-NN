@@ -6,7 +6,7 @@ from dime12.architecture.neural_net import *
 from dime12.solver import Solver
 plt.rcParams["figure.figsize"] = (7.5 * 1.618, 7.5)
 
-with open('vision/code/nn/dime12/test/data_ref2.pkl', 'rb') as file:
+with open('dime12/test/data_ref2.pkl', 'rb') as file:
   X, y = pickle.load(file)
 
 print(f"Dataset shapes — X: {X.shape}, y: {y.shape}")

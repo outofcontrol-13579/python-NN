@@ -61,7 +61,7 @@ X = np.c_[x_grid.flatten()[mask], y_grid.flatten()[mask]]   # N x P - jede Zeile
 y = nature(X.T)
 
 # Auskommentieren zum Vergleich mit main_reg.py:
-# with open('vision/code/nn/dime12/test/data_ref2.pkl', 'rb') as file:
+# with open('dime12/test/data_ref2.pkl', 'rb') as file:
 #   X, y = pickle.load(file)
 # print(f"Dataset shapes — X: {X.shape}, y: {y.shape}")
 

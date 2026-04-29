@@ -6,7 +6,7 @@ import pickle
 
 # high-dimensional test with regularization and dropout
 print('high-dimensional data, starting test')
-with open('vision/code/nn/dime12/test/data_ref1.pkl', 'rb') as file:
+with open('dime12/test/data_ref1.pkl', 'rb') as file:
   [data] = pickle.load(file)
 
 print(f"Dataset shapes — "
@@ -31,9 +31,11 @@ solver = Solver(
 
 solver.train()
 
-with open('vision/code/nn/dime12/test/results_ref1.pkl', 'rb') as file:
+with open('dime12/test/results_ref1.pkl', 'rb') as file:
   loss_history_ref, val_acc_history_ref, best_val_acc_ref = pickle.load(file)
 
+print(loss_history_ref)
+print(solver.loss_history)
 if np.allclose(solver.loss_history, loss_history_ref) and  \
         np.allclose(solver.val_acc_history, val_acc_history_ref) and \
         np.allclose(solver.best_val_acc, best_val_acc_ref):
@@ -43,7 +45,7 @@ else:
 
 # low-dimensional test without regularization and with layer normalization
 print('2D data, starting test')
-with open('vision/code/nn/dime12/test/data_ref2.pkl', 'rb') as file:
+with open('dime12/test/data_ref2.pkl', 'rb') as file:
   X, y = pickle.load(file)
 
 print(f"Dataset shapes — X: {X.shape}, y: {y.shape}")
@@ -73,11 +75,9 @@ solver = Solver(
 )
 solver.train()
 
-with open('vision/code/nn/dime12/test/results_ref2.pkl', 'rb') as file:
+with open('dime12/test/results_ref2.pkl', 'rb') as file:
   loss_history_ref, val_acc_history_ref, best_val_acc_ref = pickle.load(file)
 
-# print(solver.loss_history)
-# print(loss_history_ref)
 if np.allclose(solver.loss_history, loss_history_ref):
   print('2D test ok')
 else:
