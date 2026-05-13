@@ -10,7 +10,7 @@ from dime12.datasets.generate_data import *
 plt.rcParams["figure.figsize"] = (7.5 * 1.618, 7.5)
 
 # ── generate data ────────────────────────────────────
-P = 2
+P = 2000
 data = generate_data(input_dim=P, num_train=10000, num_val=1000)
 print(f"Dataset shapes — "
       f"X_train: {data['X_train'].shape}, y_train: {data['y_train'].shape}, "
