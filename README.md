@@ -1,8 +1,9 @@
-Um alle erforderlichen Pakete zu installieren:
-```bash
-pip install -r requirements.txt
-```
+## Quickstart in VSCode:  
+Ctrl-Shift-p, Python: Create Environment, Quick Create venv  
+  
+-> dies installiert die erforderlichen Pakete, die in requirements.txt bereits definiert sind. Die .py files sollten dann direkt laufen.  
 
+## Kurze Inhaltsbeschreibung:  
 - main_reg.py: fit eine 2D-Sinc-Funktion mit einem neuronalen Netzwerk.
 - example.py: 2000 Prädiktoren, davon nur wenige informativ. Lineare Regression vs. neuronales Netzwerk mit Regularisierung und Dropout.
 - example_reg2D: 2 Prädiktoren. Basis-Erweiterung (lineares Modell) vs. neuronales Netzwerk. Kann zur Visualisierung von Overfitting verwendet werden.
