@@ -1,5 +1,5 @@
 ## Quickstart in VSCode:  
-Ctrl-Shift-p, Python: Create Environment, Quick Create venv  
+Strg-Shift-p, Python: Create Environment, Quick Create venv  
   
 -> dies installiert die erforderlichen Pakete, die in requirements.txt bereits definiert sind. Die .py files sollten dann direkt laufen.  
 
