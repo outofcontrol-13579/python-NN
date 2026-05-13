@@ -4,3 +4,4 @@ scikit-learn
 pandas
 statsmodels
 scipy
+cvxpy
