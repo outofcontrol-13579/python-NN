@@ -118,56 +118,47 @@ def build_constraints_nullspace(n_params, equality_pairs):
 def expand_basis(meas, signal_names):
   """Assemble the regression targets b and design matrix (basis expansion) A for one or more samples.
 
-    The d/q voltage equations are interleaved row-by-row:
-        rows 0, 2, 4, … → d-axis equation  (Ud)
-        rows 1, 3, 5, … → q-axis equation  (Uq)
+  The d/q voltage equations are interleaved row-by-row:
+      rows 0, 2, 4, … → d-axis equation  (Ud)
+      rows 1, 3, 5, … → q-axis equation  (Uq)
 
-    The full regression matrix has 12 columns matching PARAMETER_NAMES.
-    Columns 0-4 are used only in d-axis rows (zeroed in q-axis rows),
-    columns 5-11 are used only in q-axis rows (zeroed in d-axis rows).
+  The full regression matrix has 12 columns matching PARAMETER_NAMES.
+  Columns 0-4 are used only in d-axis rows (zeroed in q-axis rows),
+  columns 5-11 are used only in q-axis rows (zeroed in d-axis rows).
 
-    Parameters
-    ----------
-    meas:          Dict of signal arrays or scalars keyed by signal name.
-    signal_names:  Ordered list ['Id', 'Iq', 'Ud', 'Uq', 'Wel'].
+  Parameters
+  ----------
+  meas:          Dict of signal arrays or scalars keyed by signal name.
+  signal_names:  Ordered list ['Id', 'Iq', 'Ud', 'Uq', 'Wel'].
 
-    Returns
-    -------
-    b : (2*N,)  target voltages.
-    A : (2*N, 12)  basis expansion.
-    """
-  # Make sure the variable names match the signal names.
+  Returns
+  -------
+  b : (2*N,)  target voltages.
+  A : (2*N, 12)  basis expansion.
+  """
   id, iq, ud, uq, om = (meas[signal] for signal in signal_names)
+  N = len(np.atleast_1d(id))
+  scalar = N == 1
 
-  N = len(np.atleast_1d(id))  # handles scalar inputs
-  d_num, q_num = (5, 7)  # number of d-axis / q-axis columns
+  A = np.zeros((2 if scalar else N * 2, 12))
 
-  # Each column is one basis function evaluated at all samples.
-  # d-axis basis (5 terms):  R, Lqd10, Lqd30, Cdq01, Cdq11
-  # q-axis basis (7 terms):  R, Psi, Cdq01, Ldq10, Ldq20, Ldq30, Cdq11
-  cols = [id, -om * iq, -om * iq**3, -om * id * iq, -0.5 * om * iq * id**2,
-          iq, om, 0.5 * om * iq**2, om * id, om * id**2, om * id**3, 0.5 * om * id * iq**2,
-          ]
-  BE = None
-  for col in cols:
-    if BE is None:
-      BE = col
-    else:
-      BE = np.c_[BE, col]
+  # d-axis   R,  Lqd10,    Lqd30,       Cdq01,         Cdq11
+  d_terms = [id, -om * iq, -om * iq**3, -om * id * iq, -0.5 * om * iq * id**2]
+  # q-axis   R,  Psi,Cdq01,            Ldq10,   Ldq20,      Ldq30,      Cdq11
+  q_terms = [iq, om, 0.5 * om * iq**2, om * id, om * id**2, om * id**3, 0.5 * om * id * iq**2]
 
-  # One block for ud, one block for uq, zeroing out the columns that belong to the other axis.
-  Ud = BE.copy()
-  Ud[:, d_num:] = np.zeros((N, q_num))
-  Ud = np.c_[Ud, ud]
-  Uq = BE.copy()
-  Uq[:, :d_num] = np.zeros((N, d_num))
-  Uq = np.c_[Uq, uq]
+  if scalar:
+    A[0, :5] = d_terms
+    A[1, 5:] = q_terms
+    b = np.array([ud, uq])
+  else:
+    A[::2, :5] = np.column_stack(d_terms)
+    A[1::2, 5:] = np.column_stack(q_terms)
+    b = np.empty(N * 2)
+    b[::2] = ud
+    b[1::2] = uq
 
-  # Interleave: row 0 = d[0], row 1 = q[0], row 2 = d[1], …
-  BE2 = np.empty((N * 2, (d_num + q_num + 1)))
-  BE2[::2] = Ud
-  BE2[1::2] = Uq
-  return BE2[:, -1], BE2[:, :-1]
+  return b, A
 
 
 def extract_measurement(df, signal_names, idx):
