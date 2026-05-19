@@ -8,7 +8,7 @@ pd.set_option('display.float_format', '{:,.3e}'.format)
 plt.rcParams["figure.figsize"] = (7.5 * 1.618, 7.5)
 # wait = input("Press Enter to continue.")
 
-DATASET_DIR = Path(__file__).parent / "dime12" / "datasets"
+DATASET_DIR = Path(__file__).parent.parent / "dime12" / "datasets"
 BATCH_SIZE = 100_000  # min 10_000.
 FILTERTYPE = 'convolution'  # choose a filter from FILTERS below.
 MOMENTUM = 0.9  # weight of the running_mean for the parameter evolution.
