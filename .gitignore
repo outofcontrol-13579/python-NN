@@ -1,4 +1,9 @@
+# MacOS
 .DS_Store
+# python
 venv
 __pycache__
 temp.py
+# Simulink
+*.slxc
+slprj

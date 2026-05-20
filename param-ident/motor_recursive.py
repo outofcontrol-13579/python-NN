@@ -60,7 +60,7 @@ def import_measurements(signal_names, dataset_dir, iq_threshold=IQ_THRESHOLD, we
     vprint(f"    shape: {data[key].shape}  |  NaN: {has_nan}  Inf: {has_inf}")
 
   # Discard low-excitation samples (motor near standstill or at zero load).
-  keep = (np.abs(data["Iq"]) > iq_threshold) & (np.abs(data["Wel"]) > wel_threshold)
+  keep = (np.abs(data["Iq"]) >= iq_threshold) & (np.abs(data["Wel"]) >= wel_threshold)
   print(f"  keeping {keep.sum()} / {len(keep)} samples after threshold filter")
   for key in signal_names:
     data[key] = data[key][keep]
