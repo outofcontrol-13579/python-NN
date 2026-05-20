@@ -12,9 +12,9 @@ Strg-Shift-p, Python: Create Environment, Quick Create venv
 Flexible NN-Modell- und Solver-Klasse
 
 /toy  
-- reg.py: standalone 2-layers NN für Regression, nutzbar mit Autograd.
-Liefert die gleichen Ergebnisse wie main_reg.py, wenn die gleichen Parameter verwendet werden. 
+reg.py: standalone 2-layers NN für Regression, nutzbar mit Autograd (liefert dieselben Ergebnisse wie main_reg.py, wenn dieselben Parameter verwendet werden). 
 
 /param-ident
-- motor_batches.py: solves a QP with equality and unequality constraints for batches of measurements
-- motor_recursive.py: relaxes the unequality constraints and subsums the equality constraints into the objective. This allows a simpler OLS formulation in a reduced space and thus a rank-2 recursive update (Recursive Least Square) can be used for each measurement sample to speed up computation.
+- motor_batches.py: solves a QP with equality and unequality constraints for batches of measurements.
+- motor_recursive.py: relaxes the unequality constraints and subsums the equality constraints into the objective (see Boyd & Vanderberghe, https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf,  p. 132 and 523). This allows a simpler OLS formulation in a reduced space and thus a rank-2 recursive update (Recursive Least Square) can be used for each measurement sample to speed up computation.
+
