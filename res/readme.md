@@ -8,9 +8,10 @@ welche $(I_d, I_q, W_{el})$ auf $(U_d, U_q)$ abbildet. Die Parameter $\theta$ we
 
 $$
 \theta^*
-=
-\underset{\theta}{\operatorname{arg\,min}}
-\;
+========
+
+\underset{\theta}{\operatorname{arg,min}}
+;
 \frac{1}{N}
 \sum_{i=1}^{N}
 \ell
@@ -29,8 +30,8 @@ Dabei bezeichnet $f_\theta$ die parametrisierte Regressionsfunktion mit den Para
 
 Für die parametrisierte Abbildung $f_\theta$ werden drei unterschiedliche Modellierungsansätze untersucht:
 
-- Der erste Ansatz basiert auf einem **Multi-Layer Perceptron (MLP)**, welches eine flexible Approximation der Abbildung ermöglicht.
+* Der erste Ansatz basiert auf einem **Multi-Layer Perceptron (MLP)**, welches eine flexible Approximation der Abbildung ermöglicht.
 
-- Als zweiter Ansatz werden die **Spannungsgleichungen im stationären Zustand im (dq)-Koordinatensystem** betrachtet. Diese weisen näherungsweise eine bilineare Struktur auf und stellen eine physikalisch motivierte Modellierung der Abbildung dar.
+* Als zweiter Ansatz werden die **Spannungsgleichungen im stationären Zustand im $(dq)$-Koordinatensystem** betrachtet. Diese weisen näherungsweise eine bilineare Struktur auf und stellen eine physikalisch motivierte Modellierung der Abbildung dar.
 
-- Der dritte Ansatz basiert auf einem **physikalisch informierten Residualmodell**. Hierbei wird das physikalisch motivierte PSM-Modell von dem zweiten Ansatz mit einem MLP, als Residualmodell, kombiniert.
+* Der dritte Ansatz basiert auf einem **physikalisch informierten Residualmodell**. Hierbei wird das physikalisch motivierte PSM-Modell aus dem zweiten Ansatz mit einem MLP als Residualmodell kombiniert.
