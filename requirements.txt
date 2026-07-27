@@ -5,3 +5,4 @@ pandas
 statsmodels
 scipy
 cvxpy
+torch
