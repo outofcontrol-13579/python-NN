@@ -24,7 +24,9 @@ logger = logging.getLogger(__name__)
 
 USE_GPU = False
 DTYPE = torch.float32
-if USE_GPU and torch.backends.mps.is_available() and torch.backends.mps.is_built():
+if USE_GPU and torch.cuda.is_available():
+    device = torch.device('cuda')
+elif USE_GPU and torch.backends.mps.is_available() and torch.backends.mps.is_built():
     device = torch.device('mps')
 else:
     device = torch.device('cpu')

@@ -3,6 +3,11 @@ Strg-Shift-p, Python: Create Environment, Quick Create venv
   
 -> dies installiert die erforderlichen Pakete, die in requirements.txt bereits definiert sind. Die .py files sollten dann direkt laufen.  
 
+## GPU Support:  
+Check CUDA version: cmd -> nvidia-smi  
+Install torch: pytorch.org/get-started/locally  
+Check in python: torch.cuda.is_available()  
+
 ## Kurze Inhaltsbeschreibung:  
 - main_reg.py: fit eine 2D-Sinc-Funktion mit einem neuronalen Netzwerk.
 - example.py: 2000 Prädiktoren, davon nur wenige informativ. Lineare Regression vs. neuronales Netzwerk mit Regularisierung und Dropout.
@@ -17,4 +22,7 @@ reg.py: standalone 2-layers NN für Regression, nutzbar mit Autograd (liefert di
 /param-ident
 - motor_batches.py: solves a QP with equality and unequality constraints for batches of measurements.
 - motor_recursive.py: relaxes the unequality constraints and subsums the equality constraints into the objective (see Boyd & Vanderberghe, https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf,  p. 132 and 523). This allows a simpler OLS formulation in a reduced space and thus a rank-2 recursive update (Recursive Least Square) can be used for each measurement sample to speed up computation.
+
+/res  
+siehe separates Readme.md dort
 
