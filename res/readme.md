@@ -9,10 +9,8 @@ $$
 welche $(I_d, I_q, W_{el})$ auf $(U_d, U_q)$ abbildet. Die Parameter $\theta$ werden für einen wählbaren Datensatz $\mathcal{D}$ durch Minimierung einer wählbaren Verlustfunktion $\mathcal{L}$ bestimmt:
 
 $$
-\theta^*
-=
-\underset{\theta}{\operatorname{arg\,min}}
-\;
+\theta^*=
+\arg\min_{\theta}
 \frac{1}{N}
 \sum_{i=1}^{N}
 \ell
@@ -73,7 +71,7 @@ model = MLP(len(PREDICTOR_KEYS), [32, 32], len(RESPONSE_KEYS), layernorms=False,
  **Ud: RMSE = 0.0612 | R^2 = 0.9977**  
  **Uq: RMSE = 0.0579 | R^2 = 0.9985**
 
-Ein deutlich größeres MLP verbessert die Ergebnisse nur marginal:
+Ein deutlich größeres MLP verbessert die Ergebnisse nur marginal:  
 MLP[512, 512]lFalse_sFalse_lr4.3e-05_reg0.00357_bs64_ep15.pth  
  val loss: 0.0015585467872243546  
  ** Train (mlp) metrics (physical units) **  
@@ -91,7 +89,7 @@ Zuerst sollen zwei Fragen behandelt werden: Das Kannibalisierungsproblem zwische
 
 #### (i) Kannibalisierung zwischen PSM- und Residualterm:
 
-Der PSM-Term ist eine lineare Funktion der Parameter `id, iq, om, om*id, om*iq`. Das `residual_net` ist ein MLP, das `id, iq, om` direkt als Eingaben erhält. Ein MLP selbst moderater Größe kann dieselbe bilineare Kombination nahezu exakt approximieren – die Multiplikation zweier Eingaben ist für ein MLP mit ausreichender Breite trivial. Daher hat die Gesamtvorhersage
+Der PSM-Term ist eine lineare Funktion der Parameter `id, iq, om, om*id, om*iq`. Der Residualterm ist ein MLP, das `id, iq, om` direkt als Eingaben erhält. Ein MLP selbst moderater Größe kann dieselbe bilineare Kombination nahezu exakt approximieren – die Multiplikation zweier Eingaben ist für ein MLP mit ausreichender Breite trivial. Daher hat die Gesamtvorhersage
 
 ```
 u_pred = u_psm(R, Ld, Lq, Psi) + u_res(NN weights)
@@ -114,8 +112,8 @@ prior_loss = (
 loss = loss + lambda_prior * prior_loss
 ```
 
-lambda_prior wird anhand der Validierungsleistung bestimmt.  
-R, Ld, Lq, Psi sowie val_loss werden lambda_prior in einem sweep gegenübergestellt und es wird nach einem Kompromiss gesucht: Die Regularisierung soll stark genug sein, um die Konkurrenz zwischen PSM-Term und Residual-Netzwerk aufzulösen, aber schwach genug, damit das Residual-Netzwerk nicht daran gehindert wird, die tatsächlich vorhandenen Nichtlinearitäten (z. B. Sättigung usw.) abzubilden, für deren Modellierung es vorgesehen ist.
+lambda_prior wird anhand der Validierungsleistung bestimmt:    
+R, Ld, Lq, Psi sowie val_loss werden lambda_prior in einem sweep gegenübergestellt und es wird nach einem Kompromiss gesucht: Der prior soll stark genug sein, um die Konkurrenz zwischen PSM-Term und Residual-Netzwerk aufzulösen, aber schwach genug, dass das Residual-Netzwerk nicht daran gehindert wird, die tatsächlich vorhandenen Nichtlinearitäten (z. B. Sättigung usw.) abzubilden, für deren Modellierung es vorgesehen ist.
 
 #### (ii) Bestimmung einer geeigneten Kapazität für das Residual-Netzwerk
 
@@ -124,16 +122,16 @@ Dort, wo sich der Validierungs-Loss bei zunehmender Netzwerkgröße nicht mehr m
 Als Upper-bound für die benötigte Kapazität kann die Größe [32,32] des Standalone-MLPs aus dem zweiten Ansatz angesehen werden: Das Standalone-MLP musste sowohl die bilinearen Physikterme als auch die nichtlinearen Residuen in einem einzigen Netzwerk lernen. Das ist eine grundsätzlich schwierigere Aufgabe als die eigentliche Aufgabe des Residual-Netzwerks.
 
 - angemessene Kapazität:  
-  PHY_RES[24, 24]lTrue_sFalse_lr8.3e-05_reg0.00357_bs256_ep15.pth
-  val loss: 0.0016882646644242891
-  ** Train (res) metrics (physical units) **
-  Ud: RMSE = 0.0946 | R^2 = 0.9964
-  Uq: RMSE = 0.0640 | R^2 = 0.9979
-  ** Val (res) metrics (physical units) **
-  **Ud: RMSE = 0.0645 | R^2 = 0.9975**
-  **Uq: RMSE = 0.0575 | R^2 = 0.9985**
-  Learned R=0.03394 ohm, Ld=0.000071 H, Lq=0.000067 H, Psi=0.00379 Wb
-  (Ähnliche Ergebnisse sind ebenfalls in dem lambda_prior sweep erzielt worden:
+  PHY_RES[24, 24]lTrue_sFalse_lr8.3e-05_reg0.00357_bs256_ep15.pth  
+  val loss: 0.0016882646644242891  
+  ** Train (res) metrics (physical units) **  
+  Ud: RMSE = 0.0946 | R^2 = 0.9964  
+  Uq: RMSE = 0.0640 | R^2 = 0.9979  
+  ** Val (res) metrics (physical units) **  
+  **Ud: RMSE = 0.0645 | R^2 = 0.9975**  
+  **Uq: RMSE = 0.0575 | R^2 = 0.9985**  
+  Learned R=0.03394 ohm, Ld=0.000071 H, Lq=0.000067 H, Psi=0.00379 Wb  
+  (Ähnliche Ergebnisse sind ebenfalls in dem lambda_prior sweep erzielt worden:  
   === capacity = [24, 24] ===  
   === lambda_prior = 0.8 ===  
   (Epoch 13 / 15) 4.20 seconds. train loss: 0.002784; val_loss: 0.001682  
@@ -160,9 +158,9 @@ Für den arithmetischen Mittel der beiden RMSE-Werte auf den Validierungsdatensa
 
 <div align="center">
 
-**Datasheet-Baseline: 0.3322 V**
-**Bilineares Modell: 0.0880 V**
-**Residualmodell: 0.0610 V**
+**Datasheet-Baseline: 0.3322 V**  
+**Bilineares Modell: 0.0880 V**  
+**Residualmodell: 0.0610 V**  
 
 </div>
 
