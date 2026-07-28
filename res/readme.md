@@ -62,9 +62,9 @@ Die **Parameterschätzung aus Messdaten mittels des bilinearen Modells** reduzie
 ### 2. MLP
 
 Ein **MLP mit moderater Kapazität** (Anzahl an Modellparametern) erzielt:  
-model = MLP(len(PREDICTOR_KEYS), [32, 32], len(RESPONSE_KEYS), layernorms=False, silu=False)  
- (Epoch 4 / 5) 4.97 seconds. train loss: 0.002640; val_loss: 0.001614  
- ** Train (mlp) metrics (physical units) **  
+MLP[32, 32]lFalse_sFalse_lr0.00043_reg0.00357_bs64_ep5
+val_loss: 0.0016143153320716105
+** Train (mlp) metrics (physical units) **  
  Ud: RMSE = 0.0897 | R^2 = 0.9967  
  Uq: RMSE = 0.0628 | R^2 = 0.9980  
  ** Val (mlp) metrics (physical units) **  
@@ -112,7 +112,7 @@ prior_loss = (
 loss = loss + lambda_prior * prior_loss
 ```
 
-lambda_prior wird anhand der Validierungsleistung bestimmt:    
+lambda_prior wird anhand der Validierungsleistung bestimmt:  
 R, Ld, Lq, Psi sowie val_loss werden lambda_prior in einem sweep gegenübergestellt und es wird nach einem Kompromiss gesucht: Der prior soll stark genug sein, um die Konkurrenz zwischen PSM-Term und Residual-Netzwerk aufzulösen, aber schwach genug, dass das Residual-Netzwerk nicht daran gehindert wird, die tatsächlich vorhandenen Nichtlinearitäten (z. B. Sättigung usw.) abzubilden, für deren Modellierung es vorgesehen ist.
 
 #### (ii) Bestimmung einer geeigneten Kapazität für das Residual-Netzwerk
@@ -160,7 +160,7 @@ Für den arithmetischen Mittel der beiden RMSE-Werte auf den Validierungsdatensa
 
 **Datasheet-Baseline: 0.3322 V**  
 **Bilineares Modell: 0.0880 V**  
-**Residualmodell: 0.0610 V**  
+**Residualmodell: 0.0610 V**
 
 </div>
 
