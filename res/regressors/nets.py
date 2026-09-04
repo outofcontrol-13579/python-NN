@@ -7,14 +7,127 @@ import matplotlib.pyplot as plt
 import time
 
 
+class ParamModNet(nn.Module):
+    """
+    Shared trunk + heads producing raw modulation logits for the PMSM parameters.
+    Consumes only the SCALED predictor block of the input.
+
+    A shared trunk lets the corrections draw on a common latent cause
+    (e.g. temperature, which drives both R and Psi) while separate heads
+    still let them respond independently -- e.g. Psi additionally reacting
+    to id (cross-saturation) in a way R does not.
+
+    The heads are zero-initialized so the model starts training at
+    nominal values (R_eff = R0, Psi_eff = Psi0, etc...).
+    """
+
+    def __init__(self, in_dim, hidden=16):
+        super().__init__()
+        self.trunk = nn.Sequential(
+            nn.Linear(in_dim, hidden), nn.ReLU(),
+            nn.Linear(hidden, hidden), nn.ReLU(),
+        )
+        self.head_R = nn.Linear(hidden, 1)
+        self.head_Psi = nn.Linear(hidden, 1)
+        self.head_Ld = nn.Linear(hidden, 1)
+        self.head_Lq = nn.Linear(hidden, 1)
+
+        for head in (self.head_R, self.head_Psi, self.head_Ld, self.head_Lq):
+            nn.init.zeros_(head.weight)
+            nn.init.zeros_(head.bias)
+
+    def forward(self, x_scaled):
+        h = self.trunk(x_scaled)
+        return (self.head_R(h).squeeze(-1), self.head_Psi(h).squeeze(-1),
+                self.head_Ld(h).squeeze(-1), self.head_Lq(h).squeeze(-1))
+
+
+class GreyBoxPMSM(nn.Module):
+    """
+    motor_params: dict {"R": ..., "Ld": ..., "Lq": ..., "Psi": ...}
+    r_scale: max fractional deviation allowed for R
+    """
+
+    def __init__(self, n_predictors, motor_params, y_mean, y_std, hidden=16,
+                 r_scale=0.3, psi_scale=0.2, ld_scale=0.15, lq_scale=0.15, prior_reg=1e-2, var_reg=1e-2):
+        super().__init__()
+
+        self.n_predictors = n_predictors
+        self.prior_reg = prior_reg
+        self.var_reg = var_reg
+
+        if motor_params is None:
+            motor_params = {"R": 30e-3, "Ld": 50e-6, "Lq": 50e-6, "Psi": 4e-3}
+
+        # log-parameterize R0, Ld0, Lq0 so they stays strictly positive under any update
+        self.log_R0 = nn.Parameter(torch.log(torch.tensor(float(motor_params["R"]))))
+        self.log_Ld0 = nn.Parameter(torch.log(torch.tensor(float(motor_params["Ld"]))))
+        self.log_Lq0 = nn.Parameter(torch.log(torch.tensor(float(motor_params["Lq"]))))
+        self.Psi0 = nn.Parameter(torch.tensor(float(motor_params["Psi"])))
+
+        self.r_scale, self.psi_scale = r_scale, psi_scale
+        self.ld_scale, self.lq_scale = ld_scale, lq_scale
+        self.modnet = ParamModNet(in_dim=n_predictors, hidden=hidden)
+
+        # Fixed (non-learnable) output rescaling, one pair per output (ud, uq)
+        self.register_buffer("y_mean", torch.tensor(y_mean, dtype=torch.float32))
+        self.register_buffer("y_std", torch.tensor(y_std, dtype=torch.float32))
+
+    def forward(self, x):
+        """
+        x: (N, 2*P) = [scaled predictors | raw physical predictors]
+        returns: (N, 2) scaled (ud, uq) predictions
+        """
+        P = self.n_predictors
+        x_scaled, x_raw = x[:, :P], x[:, P:]
+        id_, iq_, om_ = x_raw[:, 0], x_raw[:, 1], x_raw[:, 2]
+
+        raw_R, raw_Psi, raw_Ld, raw_Lq = self.modnet(x_scaled)
+
+        R0, Ld0, Lq0 = torch.exp(self.log_R0), torch.exp(self.log_Ld0), torch.exp(self.log_Lq0)
+        R_eff = R0 * (1.0 + self.r_scale * torch.tanh(raw_R))
+        Psi_eff = self.Psi0 * (1.0 + self.psi_scale * torch.tanh(raw_Psi))
+        Ld_eff = Ld0 * (1.0 + self.ld_scale * torch.tanh(raw_Ld))
+        Lq_eff = Lq0 * (1.0 + self.lq_scale * torch.tanh(raw_Lq))
+
+        # Pull effective params toward nominal unless data demands otherwise.
+        # Important near om ~ 0, where Psi_eff, Ld_eff, Lq_eff are unidentifiable from data alone.
+        eps = 1e-8
+        deviations = (
+            ((R_eff - R0) / (R0 + eps)) ** 2 +
+            ((Psi_eff - self.Psi0) / (self.Psi0 + eps)) ** 2 +
+            ((Ld_eff - Ld0) / (Ld0 + eps)) ** 2 +
+            ((Lq_eff - Lq0) / (Lq0 + eps)) ** 2
+        )  # shape (N,)
+        self.prior_loss = deviations.mean()       # mean drift, comparable to PSM's prior
+        self.variance_loss = deviations.var()     # penalizes spread of corrections
+
+        # transient per-batch values
+        self.R_eff, self.Psi_eff = R_eff.detach(), Psi_eff.detach()
+        self.Ld_eff, self.Lq_eff = Ld_eff.detach(), Lq_eff.detach()
+
+        ud = R_eff * id_ - om_ * Lq_eff * iq_
+        uq = R_eff * iq_ + om_ * (Ld_eff * id_ + Psi_eff)
+
+        u_phys = torch.stack([ud, uq], dim=1)
+        return (u_phys - self.y_mean) / self.y_std
+
+
 class PSM(nn.Module):
     """
     Steady-state PSM d/q voltage equations:
         ud = R*id - om*Lq*iq
         uq = R*iq + om*(Ld*id + Psi)
+
+    R, Ld, Lq, Psi are learnable parameters, initialized from motor_params.
+
+    Also computes self.prior_loss on every forward call: the squared relative
+    deviation of R/Ld/Lq/Psi from their nominal (construction-time) values.
+    Consumers weight this by their own regularization strength -- see
+    Res_PSM.lambda_prior and train().
     """
 
-    def __init__(self, R_init, Ld_init, Lq_init, Psi_init, y_mean, y_std, learnable=True):
+    def __init__(self, R_init, Ld_init, Lq_init, Psi_init, y_mean, y_std):
         super().__init__()
 
         R_init_t = torch.tensor(R_init, dtype=torch.float32)
@@ -22,22 +135,31 @@ class PSM(nn.Module):
         Lq_init_t = torch.tensor(Lq_init, dtype=torch.float32)
         Psi_init_t = torch.tensor(Psi_init, dtype=torch.float32)
 
-        if learnable:
-            self.R = nn.Parameter(R_init_t)
-            self.Ld = nn.Parameter(Ld_init_t)
-            self.Lq = nn.Parameter(Lq_init_t)
-            self.Psi = nn.Parameter(Psi_init_t)
-        else:
-            self.register_buffer('R', R_init_t)
-            self.register_buffer('Ld', Ld_init_t)
-            self.register_buffer('Lq', Lq_init_t)
-            self.register_buffer('Psi', Psi_init_t)
+        # Nominal values, frozen at construction time, for the prior-loss regularizer below.
+        self.register_buffer('R0', R_init_t.clone())
+        self.register_buffer('Ld0', Ld_init_t.clone())
+        self.register_buffer('Lq0', Lq_init_t.clone())
+        self.register_buffer('Psi0', Psi_init_t.clone())
+
+        # Learnable parameters.
+        self.R = nn.Parameter(R_init_t)
+        self.Ld = nn.Parameter(Ld_init_t)
+        self.Lq = nn.Parameter(Lq_init_t)
+        self.Psi = nn.Parameter(Psi_init_t)
 
         # Fixed (non-learnable) rescaling constants, one pair per output (v_d, v_q)
         self.register_buffer('y_mean', torch.tensor(y_mean, dtype=torch.float32))  # shape (2,)
         self.register_buffer('y_std', torch.tensor(y_std, dtype=torch.float32))    # shape (2,)
 
     def forward(self, i_d, i_q, omega):
+        eps = 1e-8
+        self.prior_loss = (
+            ((self.R - self.R0) / (self.R0 + eps)) ** 2 +
+            ((self.Ld - self.Ld0) / (self.Ld0 + eps)) ** 2 +
+            ((self.Lq - self.Lq0) / (self.Lq0 + eps)) ** 2 +
+            ((self.Psi - self.Psi0) / (self.Psi0 + eps)) ** 2
+        )
+
         u_d = self.R * i_d - omega * self.Lq * i_q
         u_q = self.R * i_q + omega * (self.Ld * i_d + self.Psi)
         u_psm_phys = torch.stack([u_d, u_q], dim=1)
@@ -51,18 +173,22 @@ class Res_PSM(nn.Module):
     Expects input x of shape (N, 2*P): first P columns are SCALED predictors
     (fed to the residual NN), last P columns are RAW physical-unit predictors
     (fed to the physics term), in the same column order.
+
+    lambda_prior weights self.prior_loss (computed by the psm submodule on
+    every forward call) in the training objective -- see train().
     """
 
     def __init__(self, num_predictors, hidden_sizes, layernorms=False, silu=False,
-                 motor_params=None, y_mean=0, y_std=1, learn_psm=True):
+                 motor_params=None, y_mean=0, y_std=1, lambda_prior=0.8):
         super().__init__()
 
         if motor_params is None:
             motor_params = {"R": 30e-3, "Ld": 50e-6, "Lq": 50e-6, "Psi": 4e-3}
 
         self.num_predictors = num_predictors
+        self.lambda_prior = lambda_prior
         self.psm = PSM(motor_params["R"], motor_params["Ld"], motor_params["Lq"], motor_params["Psi"],
-                       y_mean, y_std, learnable=learn_psm)
+                       y_mean, y_std)
 
         self.residual_net = MLP(num_predictors, hidden_sizes, 2, layernorms, silu)
 
@@ -77,6 +203,7 @@ class Res_PSM(nn.Module):
 
         u_psm_scaled = self.psm(i_d, i_q, omega)
         u_res_scaled = self.residual_net(x_scaled)
+        self.prior_loss = self.psm.prior_loss  # expose for train()'s regularizer
         return u_psm_scaled + u_res_scaled   # both terms in scaled units
 
 
@@ -122,8 +249,8 @@ def check_loss(device, dtype, loader, model):
 #     return torch.norm(torch.stack(norms), 2)
 
 
-def train(device, dtype, loader_train, loader_val, loader_test, model, optimizer, epochs=1, stats_every=100, lambda_prior=0.8):
-    """    
+def train(device, dtype, loader_train, loader_val, loader_test, model, optimizer, epochs=1, stats_every=100):
+    """
     Returns: training and validation losses for each epoch and test loss computed with best validation parameters
     """
     model = model.to(device=device)  # move the model parameters to CPU/GPU
@@ -133,6 +260,8 @@ def train(device, dtype, loader_train, loader_val, loader_test, model, optimizer
     def warmup_lambda(step):
         return min(1.0, step / batches_per_epoch)  # one epoch of warmup
 
+    # Learning Rate Schedule is designed to be complete, with one epoch of warm-up followed by cosine annealing until the last epoch.
+    # Therefore no point in saving optimizer state to resume training from a checkpoint.
     cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, epochs - 1), eta_min=1e-6)
     warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warmup_lambda)
 
@@ -142,16 +271,14 @@ def train(device, dtype, loader_train, loader_val, loader_test, model, optimizer
     losses, grad_norms, steps = [], [], []
     # lrs = []  # debug learning rate scheduler
 
-    # PSM-parameter tracking (only if the model has a `psm` submodule)
+    # PSM-parameter tracking (only if the model has a `psm` submodule or is an instance of GreyBoxPSM)
     has_psm = getattr(model, 'psm', None) is not None
-    if has_psm:
+    has_greypsm = isinstance(model, GreyBoxPMSM)
+    if has_psm or has_greypsm:
         psm_param_history = {'R': [], 'Ld': [], 'Lq': [], 'Psi': []}
         psm_grad_norms, res_grad_norms = [], []
-        R0, Ld0, Lq0, Psi0 = (p.clone().detach() for p in
-                              (model.psm.R, model.psm.Ld, model.psm.Lq, model.psm.Psi))
-        eps = 1e-8
     else:
-        psm_param_history = psm_grad_norms = res_grad_norms = R0 = Ld0 = Lq0 = Psi0 = eps = None
+        psm_param_history = psm_grad_norms = res_grad_norms = None
 
     # Best-checkpoint tracking
     best_val_loss = float('inf')
@@ -171,14 +298,9 @@ def train(device, dtype, loader_train, loader_val, loader_test, model, optimizer
             loss = F.mse_loss(preds, y)
 
             if has_psm:
-                prior_loss = (
-                    ((model.psm.R - R0) / (R0 + eps)) ** 2 +
-                    ((model.psm.Ld - Ld0) / (Ld0 + eps)) ** 2 +
-                    ((model.psm.Lq - Lq0) / (Lq0 + eps)) ** 2 +
-                    ((model.psm.Psi - Psi0) / (Psi0 + eps)) ** 2
-                )
-                loss = loss + lambda_prior * prior_loss
-
+                loss = loss + model.lambda_prior * model.prior_loss
+            elif has_greypsm:
+                loss = loss + model.prior_reg * model.prior_loss + model.var_reg * model.variance_loss
             # Compute the gradient of the loss with respect to each  parameter of the model.
             loss.backward()
 
@@ -187,6 +309,11 @@ def train(device, dtype, loader_train, loader_val, loader_test, model, optimizer
                 res_grad_norm = torch.nn.utils.clip_grad_norm_(list(model.residual_net.parameters()), max_norm=5.0)
                 psm_grad_norm = torch.nn.utils.clip_grad_norm_(list(model.psm.parameters()), max_norm=5e5)
                 grad_norm = res_grad_norm + psm_grad_norm
+            elif has_greypsm:
+                psm_params = [model.log_R0, model.Psi0, model.log_Ld0, model.log_Lq0]
+                res_grad_norm = torch.nn.utils.clip_grad_norm_(model.modnet.parameters(), max_norm=5.0)
+                psm_grad_norm = torch.nn.utils.clip_grad_norm_(psm_params, max_norm=5e5)
+                grad_norm = res_grad_norm + psm_grad_norm
             else:
                 grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)  # 1.0
 
@@ -194,13 +321,13 @@ def train(device, dtype, loader_train, loader_val, loader_test, model, optimizer
             optimizer.step()
             if e == 0:
                 warmup_scheduler.step()  # warmup the learning rate every step during the first epoch
-            # lrs.append(optimizer.param_groups[0]['lr']) # debug learning rate scheduler
+            # lrs.append(optimizer.param_groups[0]['lr'])  # debug learning rate scheduler
 
             if stats_every is not None and t % stats_every == 0:
                 losses.append(loss.item())
                 grad_norms.append(grad_norm.item())
                 steps.append(e * batches_per_epoch + t)  # global step count
-                if has_psm:
+                if has_psm or has_greypsm:
                     psm_grad_norms.append(psm_grad_norm.item())
                     res_grad_norms.append(res_grad_norm.item())
 
@@ -219,14 +346,24 @@ def train(device, dtype, loader_train, loader_val, loader_test, model, optimizer
             psm_param_history['Lq'].append(model.psm.Lq.item())
             psm_param_history['Psi'].append(model.psm.Psi.item())
 
+        if has_greypsm:
+            print(f"    R0={torch.exp(model.log_R0).item():.5f} ohm, "
+                  f"Ld0={torch.exp(model.log_Ld0).item():.6f} H, "
+                  f"Lq0={torch.exp(model.log_Lq0).item():.6f} H, "
+                  f"Psi0={model.Psi0.item():.5f} Wb")
+            psm_param_history['R'].append(torch.exp(model.log_R0).item())
+            psm_param_history['Ld'].append(torch.exp(model.log_Ld0).item())
+            psm_param_history['Lq'].append(torch.exp(model.log_Lq0).item())
+            psm_param_history['Psi'].append(model.Psi0.item())
+
         train_losses[e] = train_loss
         val_losses[e] = val_loss
 
-        # Save a snapshot of the parameters whenever validation accuracy improves
+        # Save a snapshot of the parameters whenever validation loss decreases
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_params = copy.deepcopy(model.state_dict())
-            print("  --> New best val loss: %.4f — checkpoint saved." % best_val_loss)
+            print("  --> New best val loss: %.7f — checkpoint saved." % best_val_loss)
 
         if e > 0:
             cosine_scheduler.step()  # adjust the learning rate at the end of each epoch
@@ -234,17 +371,19 @@ def train(device, dtype, loader_train, loader_val, loader_test, model, optimizer
     # Restore the best parameters found during training
     if best_params is not None:
         model.load_state_dict(best_params)
-        print("Restored best model parameters (val acc: %.4f)." % best_val_loss)
+        print("Restored best model parameters (val loss: %.7f)." % best_val_loss)
 
     # Evaluate on the test set using the best parameters
     test_loss = check_loss(device, dtype, loader_test, model)
-    print("Test loss (best val checkpoint): %.4f" % test_loss)
+    print("Test loss (best val checkpoint): %.7f" % test_loss)
 
     # Print training statistics
     if stats_every is not None:
         plot_stats(losses, grad_norms, steps, epochs, batches_per_epoch)
-        if has_psm:
+        if has_psm or has_greypsm:
             plot_physics_stats(psm_param_history, psm_grad_norms, res_grad_norms, steps, epochs, batches_per_epoch)
+
+    # fig, axes = plt.subplots(); axes.plot(lrs)  # debug learning rate scheduler
 
     return train_losses, val_losses, test_loss
 
