@@ -31,11 +31,11 @@ Dabei bezeichnet $f_\theta$ die parametrisierte Regressionsfunktion mit den Para
 
 1. ein physikalisch motiviertes bilineares Modell auf Basis der stationären Spannungsgleichungen im (dq)-Koordinatensystem,
 
-2. ein Multi-Layer Perceptron (MLP) als flexible Regressionsfunktion,
+2. ein Multi-Layer Perceptron (MLP) als flexible, jedoch kaum interpretierbare Regressionsfunktion,
 
 3. ein physikalisch informiertes Residualmodell, das das bilineare physikalische Modell um ein MLP zur Modellierung verbleibender Abweichungen erweitert, und
 
-4. ein Greybox-Modell mit neuronaler Parametermodulation.
+4. ein Greybox-Modell mit neuronaler Modulation der physikalischen Parametern.
 
 Die Modelle werden anhand des RMSE auf einem Testdatensatz verglichen, der weder für das Training noch für die Modellentwicklung verwendet wurde. Ein separater Validierungsdatensatz dient während der Entwicklung zur Überwachung des Trainingsverlaufs (z. B. Verlustkurven, Checkpoint-Auswahl). Trainings-, Validierungs- und Testdatensätze stammen aus Prüfstandsmessungen. Um Informationslecks durch die Autokorrelation benachbarter Messpunkte zu vermeiden, erfolgt die Aufteilung nicht Messpunkten-weise, sondern in zusammenhängenden Zeitblöcken (Chunks), die jeweils vollständig einem der drei Datensätze zugewiesen werden. Die neuronalen Modelle werden mittels PyTorch optimiert. Als Baseline dient das physikalische Modell mit Datasheet-Parametern.
 
@@ -53,7 +53,7 @@ Uq: RMSE = 0.5020 | R^2 = 0.8710
 ** Test (datasheet) metrics (physical units) **
 Ud: RMSE = 0.5096 | R^2 = 0.8963
 Uq: RMSE = 0.5351 | R^2 = 0.8721
-Datasheet Rd=0.03000 ohm, Rq=0.03000 ohm, Ld=0.000050 H, Lq=0.000050 H, Psi=0.00420 Wb
+Datasheet R=0.03000 ohm, Ld=0.000050 H, Lq=0.000050 H, Psi=0.00420 Wb
 
 Die **Parameterschätzung aus Messdaten mittels des bilinearen Modells** reduziert diese Werte deutlich:  
 ** Train (bil) metrics (physical units) **
@@ -65,7 +65,7 @@ Uq: RMSE = 0.0902 | R^2 = 0.9958
 ** Test (bil) metrics (physical units) **
 Ud: RMSE = 0.1354 | R^2 = 0.9927
 Uq: RMSE = 0.0999 | R^2 = 0.9955
-Learned Rd=0.03362 ohm, Rq=0.03362 ohm, Ld=0.000071 H, Lq=0.000068 H, Psi=0.00383 Wb
+Learned R=0.03362 ohm, Ld=0.000071 H, Lq=0.000068 H, Psi=0.00383 Wb
 
 ### 2. MLP
 
@@ -115,8 +115,6 @@ L2-Regularisierung (weight decay) auf nn_weight_params wirkt diesem Effekt teilw
 **Gewählte Lösung**: Der konvexe QP-Schätzer des ersten Ansatzes wird zur Verankerung des Residual-Netzwerks eingesetzt, um ein freies Abdriften der Modellparameter zu verhindern:
 
 ```python
-R0, Ld0, Lq0, Psi0 = df_bil['coef'][['Rd','Ld','Lq','Psi']]  # from the QP fit
-
 prior_loss = (
     ((model.psm.R   - R0)   / R0)  ** 2 +
     ((model.psm.Ld  - Ld0)  / Ld0) ** 2 +
@@ -186,7 +184,7 @@ Volle Modulationsflexibilität aller Parameter zerstört tendenziell die Identif
 
 #### (ii) Verhältnis zum bilinearen Modell:
 
-Da alle Köpfe null-initialisiert sind, ist der Punkt „keine Modulation" ($\tanh(0)=0$) exakt erreichbar und entspricht genau der bilinearen QP-Lösung. Das bilineare Modell ist somit als Spezialfall im modulierten Modell enthalten, dessen erreichbarer Trainingsloss folglich garantiert nicht schlechter als das OLS-Optimum ist.
+Da alle Köpfe null-initialisiert sind, ist der Punkt „keine Modulation" ($\tanh(0)=0$) exakt erreichbar und entspricht genau der bilinearen Lösung. Das bilineare Modell ist somit als Spezialfall im modulierten Modell enthalten, dessen erreichbarer Trainingsloss folglich garantiert nicht schlechter als das OLS-Optimum ist.
 
 GREY24_rs1_ps1_lds0.15_lqs0.15_grey0.01_lr0.001_reg0.00357_bs256_ep15.pth
 saved test loss: 0.0031127222596933797
@@ -220,20 +218,22 @@ Greybox-modell:
 Ud: RMSE = 0.0880 +/- 0.0197 | R^2 = 0.9965 +/- 0.0007
 Uq: RMSE = 0.0716 +/- 0.0088 | R^2 = 0.9973 +/- 0.0010
 
-Für den arithmetischen Mittel der beiden RMSE-Werte ergibt sich:
+Für das arithmetische Mittel der beiden RMSE-Werte ergibt sich:
 
 <div align="center">
 
 **Datasheet-Baseline: 0.5224 V**  
-**Bilineares Modell: 0.1081 ± 0.0171 V**  
-**MLP-Modell: 0.0768 ± 0.0142 V**  
-**Residualmodell: 0.0787 ± 0.0126 V**
-**Greybox-modell: 0.0798 ± 0.0143 V**
+**Bilineares Modell: 0.1081 ± 0.0170 V**  
+**MLP-Modell: 0.0768 ± 0.0133 V**  
+**Residualmodell: 0.0787 ± 0.0121 V**
+**Greybox-modell: 0.0798 ± 0.0132 V**
 
 </div>
 
 Die Parameterschätzung des bilinearen PSM-Modells aus Messdaten verbessert die Genauigkeit gegenüber der Verwendung von Datasheet-Parametern erheblich (über 50 %).
 
-Durch die Erweiterung des identifizierten physikalischen Modells um ein Residual-Netzwerk kann die Genauigkeit weiter leicht verbessert werden (über 25% gegenüber dem reinen PSM-Modell). Dass das korrekt verankerte physikalisch informierte Modell selbst bei großem lambda_prior das reine PSM-Modell übertrifft, deutet darauf hin, dass das Residualmodell zusätzliche physikalisch relevante Effekte erfasst, die durch die bilinearen PSM-Gleichungen nicht abgebildet werden.
+Durch die Erweiterung des physikalischen Modells um ein Residual-Netzwerk kann die Genauigkeit weiter leicht verbessert werden (über 25% gegenüber dem reinen PSM-Modell). Dass das korrekt verankerte physikalisch informierte Modell selbst bei großem lambda_prior das reine PSM-Modell übertrifft, deutet darauf hin, dass das Residualmodell zusätzliche physikalisch relevante Effekte erfasst, die durch die bilinearen PSM-Gleichungen nicht abgebildet werden.
 
-Ebenso übertrifft die Genauigkeit des greybox-modulierten Modells die des bilinearen Modells deutlich. Darüber hinaus zeigen $R_{eff}$ sowie $\Psi_{eff}$ physikalisch plausible Trends in Abhängigkeit von $\omega$, $i_d$ und $i_q$: ein Hinweis auf reale Parameterdrift, die durch die Kontextmerkmale erklärbar ist.
+Ebenso übertrifft die Genauigkeit des Greybox-Modells die des bilinearen Modells deutlich. Darüber hinaus zeigen $R_{eff}$ sowie $\Psi_{eff}$ physikalisch plausible Trends in Abhängigkeit von $\omega$, $i_d$ und $i_q$: ein Hinweis auf reale Parameterdrift, die durch die Kontextmerkmale erklärbar ist.
+
+Sowohl das Residualmodell als auch das Greybox-Modell erreichen nahezu die Genauigkeit der reinen MLP-Modellierung, bieten dabei den Vorteil einer stärker physikalisch strukturierten und damit besser interpretierbaren Modellform. Darüber hinaus wird erwartet, dass die physikalische Strukturierung ein robusteres Extrapolationsverhalten außerhalb der Trainingsverteilung ermöglicht. Die physikalische Eindeutigkeit der gelernten Parameter ist aufgrund der diskutierten Identifizierbarkeitsprobleme jedoch nur eingeschränkt gegeben.

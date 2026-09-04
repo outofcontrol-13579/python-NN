@@ -254,6 +254,15 @@ def print_cv_summary(cv_results, response_keys, n_folds):
             print(f"  {key}: RMSE = {rmses.mean():.4f} +/- {rmses.std():.4f}  |  "
                   f"R^2 = {r2s.mean():.4f} +/- {r2s.std():.4f}")
 
+        # Combined RMSE across responses. Average the per-response RMSEs within each
+        # fold first, then take mean/std of that per-fold series across folds.
+        per_response_rmse = np.stack(
+            [np.array(per_key[key]['rmse']) for key in response_keys], axis=0
+        )  # shape (n_responses, n_folds)
+        combined_per_fold = per_response_rmse.mean(axis=0)  # shape (n_folds,)
+        print(f"  Combined ({'+'.join(response_keys)})/{len(response_keys)}: "
+              f"RMSE = {combined_per_fold.mean():.4f} +/- {combined_per_fold.std():.4f}")
+
 
 def get_predictions_mlp(model, device, dtype, X_by_split, y_scaler):
     """Run the model on each split's inputs and inverse-transform to physical units.
